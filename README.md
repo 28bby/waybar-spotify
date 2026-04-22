@@ -57,16 +57,14 @@ If you want to style the module container itself, you can add this to your style
 }
 ```
 ## 🎨 Modifying Colors
-If you want to change the text colors of the artist, song, or lyrics, you can easily do so by editing the colors dictionary at the top of the spotify.py script:
-```bash
-colors = {
-    "artist": "#F5C2E7",  // Pink
-    "song": "#89B4FA",    // Blue
-    "lyrics": "#CBA6F7",  // Purple
-    "header": "#a6d189",  // Green
-    "album": "#F9E2AF",   // Yellow
-    "vol": "#FFD700"      // Gold
-}
-```
+This script is designed to seamlessly integrate with your environment. It automatically reads your terminal colors from your Alacritty configuration located at ~/.config/omarchy/current/theme/alacritty.toml.
+- Artist: Uses colors.normal.magenta
+- Song: Uses colors.normal.blue
+- Lyrics: Uses colors.bright.magenta
+- Icons/Header: Uses colors.normal.green
+- Separators: Uses colors.bright.black
+Don't use Alacritty? No problem! If the script cannot find the file, it will gracefully fall back to a beautifully curated default color palette.
+
+You can also change the path to your own configuration file by editing the alacritty_theme_path variable at the top of spotify.py.
 ## 🤝 Acknowledgments
 Lyrics provided by the excellent [LRCLIB](https://lrclib.net/) project.
