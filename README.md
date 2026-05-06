@@ -1,4 +1,4 @@
-# Waybar Spotify with Synced Lyrics 🎵
+# Waybar Spotify/Cliamp with Synced Lyrics 🎵
 
 A clean, responsive, and highly customizable custom module for [Waybar](https://github.com/Alexays/Waybar) that displays the currently playing track, artist, and real-time synced lyrics for both Spotify and cliamp. 
 
