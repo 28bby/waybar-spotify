@@ -3,6 +3,7 @@
 A clean, responsive, and highly customizable custom module for [Waybar](https://github.com/Alexays/Waybar) that displays the currently playing track, artist, and real-time synced lyrics for both Spotify and cliamp. 
 
 It uses `playerctl` to fetch local metadata, automatically detects the active player, dynamically changes its icon, and uses the [LRCLIB API](https://lrclib.net/) to fetch and sync lyrics without requiring any API keys or tokens.
+
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f5612b93-257e-4ae5-a2f1-ec2c6f63d26b" />
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/98e9e8b9-f968-44d4-bb82-7e85fc8c3d20" />
 
