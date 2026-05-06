@@ -42,16 +42,40 @@ theme_colors = {
     "spotify_header": sys_colors.get("colors.normal.green", "#a6d189"),
     "album": sys_colors.get("colors.normal.yellow", "#F9E2AF")
 }
-spotify_icon = ""
+
+player_icons = {
+    "spotify": "", 
+    "cliamp": ""
+}
+
+player_names = {
+    "spotify": "Spotify",
+    "cliamp": "Cliamp"
+}
+
 icon_color = sys_colors.get("colors.normal.green", "#8FCB9B")
+
+def clean_string(s):
+    if not s: 
+        return ""
+    # Limpiar códigos ANSI que suelen escupir los reproductores de consola
+    s = re.sub(r'\x1b\[[0-9;]*m', '', s)
+    return ''.join(c for c in s if c.isprintable() or c in ['\n', '\t']).strip()
 
 def get(cmd):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
-    except: return ""
+        res = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
+        return clean_string(res)
+    except: 
+        return ""
 
 def escape(text):
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") if text else ""
+    if not text: return ""
+    # Escape estricto para Pango (Waybar)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Evita que el formateador interno de Waybar crashee si hay llaves en el título
+    text = text.replace("{", "{{").replace("}", "}}")
+    return text
 
 def strip_html(s):
     return re.sub(r"<.*?>", "", s)
@@ -72,7 +96,7 @@ def parse_lrc(lrc_text):
     return parsed
 
 def fetch_lyrics(title, artist):
-    if not title: return []
+    if not title or title in ["Desconocido"]: return []
     clean_title = re.sub(r'\(.*?\)|\[.*?\]|-.*', '', title).strip()
     query = urllib.parse.quote(f"{clean_title} {artist}")
     url = f"https://lrclib.net/api/search?q={query}"
@@ -90,28 +114,60 @@ current_id = ""
 current_lyrics = []
 
 while True:
-    status = get("playerctl --player=spotify status")
-    status_low = status.lower()
+    active_player = None
+    status_low = "stopped"
 
-    if status_low not in ["playing", "paused"]:
-        print(json.dumps({"text": f"<span foreground='{icon_color}'>{spotify_icon}</span>\u00A0\u00A0Spotify"}), flush=True)
+    for player in ["spotify", "cliamp"]:
+        status = get(f"playerctl --player={player} status").lower()
+        if status in ["playing", "paused"]:
+            active_player = player
+            status_low = status
+            break
+
+    if not active_player:
+        print(json.dumps({"text": f"<span foreground='{icon_color}'></span>\u00A0\u00A0No hay música"}), flush=True)
         time.sleep(3)
         continue
 
-    title_raw = get("playerctl --player=spotify metadata title")
-    artist_raw = get("playerctl --player=spotify metadata artist")
-    album_raw = get("playerctl --player=spotify metadata album")
-    vol_raw = get("playerctl --player=spotify volume") or "0"
-    pos_raw = get("playerctl --player=spotify position") or "0"
-    len_raw = get("playerctl --player=spotify metadata mpris:length") or "0"
+    # NUEVO SISTEMA: Hacemos una sola petición general en lugar de sobrecargar el reproductor
+    raw_meta = get(f"playerctl --player={active_player} metadata")
+    meta_dict = {}
+    if raw_meta:
+        for line in raw_meta.split('\n'):
+            parts = line.split(maxsplit=2)
+            if len(parts) >= 3:
+                prop = parts[1].lower()
+                val = parts[2].strip()
+                meta_dict[prop] = val
+
+    # Extraemos los datos del diccionario (con fallbacks garantizados)
+    title_raw = meta_dict.get("xesam:title", meta_dict.get("title", "Desconocido"))
+    artist_raw = meta_dict.get("xesam:artist", meta_dict.get("artist", "Artista desconocido"))
+    album_raw = meta_dict.get("xesam:album", meta_dict.get("album", "Álbum desconocido"))
+    len_raw = meta_dict.get("mpris:length", meta_dict.get("length", "0"))
     
+    # Volumen y posición van en peticiones separadas porque no son "metadata" estática
+    vol_raw = get(f"playerctl --player={active_player} volume")
+    pos_raw = get(f"playerctl --player={active_player} position")
+
+    # Cálculos matemáticos protegidos contra fallos (ej. si el reproductor no reporta tiempo)
     try:
-        length_sec = int(len_raw) // 1000000
-        pos_sec = int(float(pos_raw))
+        length_sec = int(len_raw) // 1000000 if len_raw and len_raw != "0" else 0
         length_fmt = f"{length_sec // 60}:{length_sec % 60:02d}"
+    except:
+        length_sec, length_fmt = 0, "0:00"
+
+    try:
+        pos_sec = int(float(pos_raw)) if pos_raw else 0
         pos_fmt = f"{pos_sec // 60}:{pos_sec % 60:02d}"
     except:
-        length_fmt, pos_fmt, length_sec, pos_sec = "0:00", "0:00", 0, 0
+        pos_sec, pos_fmt = 0, "0:00"
+
+    try:
+        vol_float = float(vol_raw) if vol_raw else 0.0
+        vol_percent = int(vol_float) if vol_float > 1.0 else int(vol_float * 100)
+    except:
+        vol_percent = 0
 
     if f"{title_raw}{artist_raw}" != current_id:
         current_id = f"{title_raw}{artist_raw}"
@@ -122,18 +178,22 @@ while True:
         if pos_sec >= ts: active_lyric = txt
         else: break
 
+    current_icon = player_icons.get(active_player, "")
+    current_name = player_names.get(active_player, active_player.capitalize())
+
     status_glyph = "▶" if status_low == "playing" else "⏸"
     status_color = theme_colors['status_playing'] if status_low == "playing" else theme_colors['status_stopped']
     row_emojis = ["🎵", "👤", "💿", "⏱️"]
-    volume_text = f"🔊 Volume: {int(float(vol_raw)*100)}%"
+    volume_text = f"🔊 Volume: {vol_percent}%"
     
     all_lengths = [len(title_raw), len(artist_raw), len(album_raw), len(f"{pos_fmt} / {length_fmt}"), 25]
     line_width = max(all_lengths) + 6
 
-    header_line = center_text(f"<span foreground='{theme_colors['spotify_header']}'>{spotify_icon} Spotify</span> "
-                              f"<span foreground='{status_color}'>{status_glyph} {status.capitalize()}</span>", line_width)
+    header_line = center_text(f"<span foreground='{theme_colors['spotify_header']}'>{current_icon} {current_name}</span> "
+                              f"<span foreground='{status_color}'>{status_glyph} {status_low.capitalize()}</span>", line_width)
     separator = f"<span foreground='{theme_colors['line']}'>{'─'*line_width}</span>"
     
+    # Tooltip formateado y purgado de caracteres conflictivos
     tooltip = "\n".join([
         header_line,
         separator,
@@ -145,7 +205,7 @@ while True:
         center_text(f"<span foreground='{theme_colors['volume']}'>{volume_text}</span>", line_width)
     ])
 
-    prefix = f"<span foreground='{icon_color}'>{spotify_icon}</span>\u00A0\u00A0"
+    prefix = f"<span foreground='{icon_color}'>{current_icon}</span>\u00A0\u00A0"
     bar_text = (f"{prefix}<span foreground='{theme_colors['artist']}'>{escape(artist_raw)}</span>"
                 f"<span foreground='{theme_colors['line']}'> - </span>"
                 f"<span foreground='{theme_colors['song']}'><i>{escape(title_raw)}</i></span>"
